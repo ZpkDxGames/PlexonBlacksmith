@@ -58,7 +58,9 @@ class PlexonBlacksmithRuntimeTest {
         player.setItemOnCursor(damaged);
         call(REPAIR_INPUT, ClickType.LEFT, InventoryAction.PLACE_ALL);
 
-        assertNull(player.getItemOnCursor());
+        ItemStack cursorAfterPlacement = player.getItemOnCursor();
+        assertTrue(cursorAfterPlacement == null || cursorAfterPlacement.getType().isAir() || cursorAfterPlacement.getAmount() <= 0,
+                "Input placement must leave the cursor empty");
         ItemStack visible = player.getOpenInventory().getTopInventory().getItem(REPAIR_INPUT);
         assertNotNull(visible);
         assertEquals(Material.DIAMOND_PICKAXE, visible.getType());
