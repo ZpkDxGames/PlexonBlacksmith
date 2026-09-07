@@ -57,7 +57,7 @@ import java.util.logging.Level;
  * scene items and overwrites runtime input/output ItemStacks. The rest of the server may still
  * use GUIPlus normally.
  */
-public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener, CommandExecutor {
+public class PlexonBlacksmithBridge extends JavaPlugin implements Listener, CommandExecutor {
 
     private enum Mode { REPAIR, ENCHANT }
 
