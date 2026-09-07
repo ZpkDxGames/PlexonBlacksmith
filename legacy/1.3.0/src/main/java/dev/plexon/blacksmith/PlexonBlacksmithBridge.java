@@ -1,13 +1,5 @@
 package dev.plexon.blacksmith;
 
-import dev.plexon.blacksmith.api.BlacksmithSessionView;
-import dev.plexon.blacksmith.api.EnchantQuote;
-import dev.plexon.blacksmith.api.PlexonBlacksmithAPI;
-import dev.plexon.blacksmith.api.RepairQuote;
-import dev.plexon.blacksmith.event.PlexonItemEnchantedEvent;
-import dev.plexon.blacksmith.event.PlexonItemRepairedEvent;
-import dev.plexon.blacksmith.integration.core.CoreBridge;
-import dev.plexon.blacksmith.integration.core.CoreBridgeFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -20,12 +12,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -33,25 +22,20 @@ import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.RegisteredServiceProvider;
-import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.lang.reflect.Method;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.logging.Level;
 
 /**
- * Core-aware runtime Blacksmith inventory for Paper 26.2 with standalone fallback.
+ * Standalone runtime Blacksmith inventory for Paper 26.2.
  *
  * GUIPlus is intentionally not used for the mutable service inventory because GUIPlus redraws
  * scene items and overwrites runtime input/output ItemStacks. The rest of the server may still
@@ -76,7 +60,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
 
     private static final class Session {
         final UUID playerId;
-        final UUID sessionId = UUID.randomUUID();
         final Inventory inventory;
         Mode mode = Mode.REPAIR;
         ItemStack repairInput;
@@ -84,7 +67,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         ItemStack enchantBook;
         ItemStack result;
         double price;
-        boolean transactionActive;
 
         Session(UUID playerId, Inventory inventory) {
             this.playerId = playerId;
@@ -96,83 +78,43 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         final ItemStack result;
         final double price;
         final int applied;
-        final Map<String, Integer> appliedEnchantments;
 
-        EnchantResult(ItemStack result, double price, int applied, Map<String, Integer> appliedEnchantments) {
+        EnchantResult(ItemStack result, double price, int applied) {
             this.result = result;
             this.price = price;
             this.applied = applied;
-            this.appliedEnchantments = Collections.unmodifiableMap(new LinkedHashMap<>(appliedEnchantments));
         }
     }
 
     private final Map<UUID, Session> sessions = new HashMap<>();
     private final DecimalFormat money = new DecimalFormat("#,##0.00");
     private VaultHook vault;
-    private CoreBridge coreBridge;
-    private PlexonBlacksmithAPI publicApi;
 
     @Override
     public void onEnable() {
-        coreBridge = CoreBridgeFactory.resolve(this);
-        coreBridge.registerStarting();
-        try {
-            Bukkit.getPluginManager().registerEvents(this, this);
-            PluginCommand command = getCommand("blacksmith");
-            if (command != null) command.setExecutor(this);
-
-            vault = VaultHook.tryCreate();
-            publicApi = new PublicApi();
-            Bukkit.getServicesManager().register(PlexonBlacksmithAPI.class, publicApi, this, ServicePriority.Normal);
-
-            if (vault == null) {
-                String detail = "Blacksmith services are loaded, but Vault economy is unavailable; paid transactions are blocked";
-                getLogger().warning(detail + ".");
-                coreBridge.markDegraded(detail);
-            } else {
-                coreBridge.markReady("Repair, enchanting, GUI sessions, public API/events and " + vault.name() + " economy are operational");
-            }
-            getLogger().info("PlexonBlacksmith " + getPluginMeta().getVersion() + " enabled in " + coreBridge.mode() + " mode. Runtime inventory remains fully plugin-owned.");
-        } catch (Throwable error) {
-            if (coreBridge != null) coreBridge.markFailed("Startup failed: " + error.getClass().getSimpleName());
-            getLogger().log(Level.SEVERE, "PlexonBlacksmith could not start safely.", error);
-            unregisterPublicApi();
-            Bukkit.getPluginManager().disablePlugin(this);
+        Bukkit.getPluginManager().registerEvents(this, this);
+        PluginCommand command = getCommand("blacksmith");
+        if (command != null) command.setExecutor(this);
+        vault = VaultHook.tryCreate();
+        if (vault == null) {
+            getLogger().warning("Vault economy provider not found. Blacksmith will open, but paid results are blocked.");
         }
+        getLogger().info("PlexonBlacksmith 1.3.0 enabled. Runtime inventory is fully plugin-owned.");
     }
 
     @Override
     public void onDisable() {
-        closeAllSessions();
-        unregisterPublicApi();
-        if (coreBridge != null) coreBridge.unregister();
+        for (Map.Entry<UUID, Session> entry : new HashMap<>(sessions).entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getKey());
+            if (player != null) returnStoredInputs(player, entry.getValue());
+        }
         sessions.clear();
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length > 0 && args[0].equalsIgnoreCase("diagnostics")) {
-            if (!sender.hasPermission("plexon.blacksmith.admin")) {
-                sender.sendMessage("§6Blacksmith §8» §cYou do not have permission to view diagnostics.");
-                return true;
-            }
-            sendDiagnostics(sender);
-            return true;
-        }
-        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
-            if (!sender.hasPermission("plexon.blacksmith.admin")) {
-                sender.sendMessage("§6Blacksmith §8» §cYou do not have permission to reload Blacksmith.");
-                return true;
-            }
-            reloadServices(sender);
-            return true;
-        }
-        if (args.length > 0) {
-            sender.sendMessage("§6Blacksmith §8» §7Usage: /blacksmith [diagnostics|reload]");
-            return true;
-        }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Blacksmith can only be opened by a player. Use /blacksmith diagnostics from console.");
+            sender.sendMessage("Blacksmith can only be opened by a player.");
             return true;
         }
         if (!player.hasPermission("plexon.blacksmith.use")) {
@@ -208,13 +150,11 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         Inventory top = session.inventory;
         int raw = event.getRawSlot();
 
-        // Player inventory: preserve ordinary movement, but block cross-inventory collection paths.
+        // Player inventory: allow ordinary cursor pickup/movement. Intercept only shift-click.
         if (raw >= top.getSize()) {
             if (event.isShiftClick()) {
                 event.setCancelled(true);
                 shiftRoute(player, session, event);
-            } else if (event.getClick() == ClickType.DOUBLE_CLICK || event.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
-                event.setCancelled(true);
             }
             return;
         }
@@ -293,12 +233,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         if (session == null || event.getView().getTopInventory() != session.inventory) return;
         sessions.remove(player.getUniqueId());
         returnStoredInputs(player, session);
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onQuit(PlayerQuitEvent event) {
-        Session session = sessions.remove(event.getPlayer().getUniqueId());
-        if (session != null) returnStoredInputs(event.getPlayer(), session);
     }
 
     private void handleInputClick(Player player, Session session, InventoryClickEvent event, int slot) {
@@ -525,11 +459,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
     }
 
     private void completeRepair(Player player, Session session, InventoryClickEvent event) {
-        if (!Bukkit.isPrimaryThread()) {
-            getLogger().severe("Rejected asynchronous repair transaction for " + player.getName());
-            return;
-        }
-        if (session.transactionActive) return;
         if (session.repairInput == null || !isRepairable(session.repairInput)) {
             player.sendMessage("§6Blacksmith §8» §7Place a damaged item in Repair Input first.");
             return;
@@ -539,42 +468,17 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
             return;
         }
 
-        ItemStack original = session.repairInput.clone();
-        ItemStack result = repairResult(original);
-        double price = repairPrice(original);
-        int previousDamage = damageOf(original);
-        UUID transactionId = UUID.randomUUID();
-        session.transactionActive = true;
-        boolean charged = false;
-        boolean committed = false;
-        try {
-            if (!charge(player, price)) return;
-            charged = true;
+        ItemStack result = repairResult(session.repairInput);
+        double price = repairPrice(session.repairInput);
+        if (!charge(player, price)) return;
 
-            // Cursor commit happens before the cached input is consumed. If it throws, rollback is lossless.
-            player.setItemOnCursor(result.clone());
-            session.repairInput = null;
-            committed = true;
-        } catch (Throwable failure) {
-            if (charged && !committed) refundAfterFailure(player, price, failure);
-            getLogger().log(Level.SEVERE, "Repair transaction " + transactionId + " failed before commit.", failure);
-            player.sendMessage("§6Blacksmith §8» §cRepair failed safely. Your input was preserved" + (charged ? " and payment was refunded." : "."));
-            return;
-        } finally {
-            session.transactionActive = false;
-        }
-
-        renderSafely(session);
-        fireRepairEvent(player, transactionId, result, previousDamage, price);
+        session.repairInput = null;
+        player.setItemOnCursor(result);
+        render(session);
         player.sendMessage("§6Blacksmith §8» §aRepaired for §f$" + money.format(price) + "§a.");
     }
 
     private void completeEnchant(Player player, Session session, InventoryClickEvent event) {
-        if (!Bukkit.isPrimaryThread()) {
-            getLogger().severe("Rejected asynchronous enchant transaction for " + player.getName());
-            return;
-        }
-        if (session.transactionActive) return;
         EnchantResult built = buildEnchantResult(session.enchantTarget, session.enchantBook);
         if (built == null) {
             player.sendMessage("§6Blacksmith §8» §7Place an item and a compatible enchanted book first.");
@@ -584,39 +488,18 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
             player.sendMessage("§6Blacksmith §8» §7Clear your cursor before taking the result.");
             return;
         }
+        if (!charge(player, built.price)) return;
 
-        ItemStack originalTarget = session.enchantTarget.clone();
-        ItemStack originalBook = session.enchantBook.clone();
-        UUID transactionId = UUID.randomUUID();
-        session.transactionActive = true;
-        boolean charged = false;
-        boolean committed = false;
-        try {
-            if (!charge(player, built.price)) return;
-            charged = true;
-
-            player.setItemOnCursor(built.result.clone());
-            session.enchantTarget = null;
-            session.enchantBook = null;
-            committed = true;
-        } catch (Throwable failure) {
-            if (charged && !committed) refundAfterFailure(player, built.price, failure);
-            getLogger().log(Level.SEVERE, "Enchant transaction " + transactionId + " failed before commit.", failure);
-            player.sendMessage("§6Blacksmith §8» §cEnchant failed safely. Your inputs were preserved" + (charged ? " and payment was refunded." : "."));
-            return;
-        } finally {
-            session.transactionActive = false;
-        }
-
-        renderSafely(session);
-        fireEnchantEvent(player, transactionId, built, originalBook);
+        session.enchantTarget = null;
+        session.enchantBook = null;
+        player.setItemOnCursor(built.result);
+        render(session);
         player.sendMessage("§6Blacksmith §8» §aEnchantments applied for §f$" + money.format(built.price) + "§a.");
     }
 
     private boolean charge(Player player, double price) {
         if (vault == null) vault = VaultHook.tryCreate();
         if (vault == null) {
-            if (coreBridge != null) coreBridge.markDegraded("Vault economy is unavailable; paid transactions are blocked");
             player.sendMessage("§6Blacksmith §8» §cVault economy is unavailable.");
             return false;
         }
@@ -629,12 +512,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
             return false;
         }
         return true;
-    }
-
-    private void refundAfterFailure(Player player, double price, Throwable cause) {
-        if (vault != null && vault.refund(player, price)) return;
-        getLogger().log(Level.SEVERE, "CRITICAL: Vault refund failed for " + player.getUniqueId() + " amount $" + money.format(price), cause);
-        player.sendMessage("§6Blacksmith §8» §cA payment refund failed. Contact an administrator with transaction time immediately.");
     }
 
     private boolean isRepairable(ItemStack stack) {
@@ -707,7 +584,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         int applied = 0;
         double price = 100.0;
         Set<Enchantment> appliedNow = new HashSet<>();
-        Map<String, Integer> appliedEnchantments = new LinkedHashMap<>();
 
         for (Map.Entry<Enchantment, Integer> entry : storage.getStoredEnchants().entrySet()) {
             Enchantment enchant = entry.getKey();
@@ -728,22 +604,13 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
             if (targetMeta.addEnchant(enchant, requested, false)) {
                 applied++;
                 appliedNow.add(enchant);
-                appliedEnchantments.put(enchantmentKey(enchant), requested);
                 price += enchantRate(enchant) * requested;
             }
         }
 
         if (applied == 0) return null;
         result.setItemMeta(targetMeta);
-        return new EnchantResult(result, roundMoney(price), applied, appliedEnchantments);
-    }
-
-    private String enchantmentKey(Enchantment enchantment) {
-        try {
-            return enchantment.getKey().toString();
-        } catch (Throwable ignored) {
-            return enchantment.toString();
-        }
+        return new EnchantResult(result, roundMoney(price), applied);
     }
 
     private double enchantRate(Enchantment enchantment) {
@@ -823,164 +690,17 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
         return Math.round(value * 100.0) / 100.0;
     }
 
-    private int damageOf(ItemStack stack) {
-        if (stack == null) return 0;
-        ItemMeta meta = stack.getItemMeta();
-        return meta instanceof Damageable damageable ? damageable.getDamage() : 0;
-    }
-
-    private void renderSafely(Session session) {
-        try {
-            if (sessions.get(session.playerId) == session) render(session);
-        } catch (Throwable error) {
-            getLogger().log(Level.WARNING, "Transaction committed but Blacksmith GUI refresh failed for session " + session.sessionId, error);
-        }
-    }
-
-    private void fireRepairEvent(Player player, UUID transactionId, ItemStack result, int previousDamage, double price) {
-        String eventId = transactionId + ":repair";
-        try {
-            Bukkit.getPluginManager().callEvent(new PlexonItemRepairedEvent(
-                    player, transactionId, eventId, result, previousDamage, 0, previousDamage, price, economyName()));
-        } catch (Throwable error) {
-            getLogger().log(Level.WARNING, "Repair transaction committed, but event dispatch failed for " + eventId, error);
-        }
-    }
-
-    private void fireEnchantEvent(Player player, UUID transactionId, EnchantResult built, ItemStack originalBook) {
-        String eventId = transactionId + ":enchant";
-        try {
-            Bukkit.getPluginManager().callEvent(new PlexonItemEnchantedEvent(
-                    player, transactionId, eventId, built.result, originalBook, built.appliedEnchantments, built.price, economyName()));
-        } catch (Throwable error) {
-            getLogger().log(Level.WARNING, "Enchant transaction committed, but event dispatch failed for " + eventId, error);
-        }
-    }
-
-    private String economyName() {
-        return vault == null ? "unavailable" : vault.name();
-    }
-
-    private void unregisterPublicApi() {
-        if (publicApi == null) return;
-        try {
-            Bukkit.getServicesManager().unregister(PlexonBlacksmithAPI.class, publicApi);
-        } catch (Throwable error) {
-            getLogger().log(Level.WARNING, "Could not unregister PlexonBlacksmithAPI cleanly.", error);
-        } finally {
-            publicApi = null;
-        }
-    }
-
-    private void closeAllSessions() {
-        for (Map.Entry<UUID, Session> entry : new HashMap<>(sessions).entrySet()) {
-            Session session = sessions.remove(entry.getKey());
-            if (session == null) continue;
-            Player player = Bukkit.getPlayer(entry.getKey());
-            if (player != null) {
-                returnStoredInputs(player, session);
-                try {
-                    if (player.getOpenInventory().getTopInventory() == session.inventory) player.closeInventory();
-                } catch (Throwable ignored) {
-                }
-            } else if (session.repairInput != null || session.enchantTarget != null || session.enchantBook != null) {
-                getLogger().severe("Session " + session.sessionId + " became ownerless during shutdown. PlayerQuit handling should have returned these inputs earlier.");
-            }
-        }
-    }
-
-    private void reloadServices(CommandSender sender) {
-        closeAllSessions();
-        vault = VaultHook.tryCreate();
-        if (vault == null) {
-            if (coreBridge != null) coreBridge.markDegraded("Reloaded; Vault economy is unavailable; paid transactions are blocked");
-            sender.sendMessage("§6Blacksmith §8» §eReloaded in degraded mode: Vault economy is unavailable.");
-        } else {
-            if (coreBridge != null) coreBridge.markReady("Reloaded successfully; economy provider " + vault.name() + " is operational");
-            sender.sendMessage("§6Blacksmith §8» §aReloaded successfully. Economy: §f" + vault.name());
-        }
-    }
-
-    private void sendDiagnostics(CommandSender sender) {
-        sender.sendMessage("§8§m----------------------------------------");
-        sender.sendMessage("§6§lPlexonBlacksmith Diagnostics");
-        sender.sendMessage("§7Plugin: §f" + getPluginMeta().getVersion());
-        sender.sendMessage("§7Paper/Bukkit: §f" + Bukkit.getVersion());
-        sender.sendMessage("§7Java: §f" + System.getProperty("java.version"));
-        sender.sendMessage("§7Mode: §f" + (coreBridge == null ? "STANDALONE" : coreBridge.mode()));
-        sender.sendMessage("§7Core plugin/API: §f" + (coreBridge == null ? "- / -" : coreBridge.pluginVersion() + " / " + coreBridge.apiVersion()));
-        sender.sendMessage("§7Supported Core API: §f" + CoreBridge.SUPPORTED_API_RANGE);
-        sender.sendMessage("§7Module state: §f" + (coreBridge == null ? "NOT_INITIALIZED" : coreBridge.registrationState()));
-        sender.sendMessage("§7Core detail: §f" + (coreBridge == null ? "-" : coreBridge.detail()));
-        sender.sendMessage("§7Economy: §f" + economyName());
-        sender.sendMessage("§7Active GUI sessions: §f" + sessions.size());
-        sender.sendMessage("§7Active transactions: §f" + sessions.values().stream().filter(s -> s.transactionActive).count());
-        sender.sendMessage("§7Public API: §f" + (publicApi == null ? "UNAVAILABLE" : "REGISTERED"));
-        sender.sendMessage("§7Repair event: §fREADY");
-        sender.sendMessage("§7Enchant event: §fREADY");
-        sender.sendMessage("§8§m----------------------------------------");
-    }
-
-    private final class PublicApi implements PlexonBlacksmithAPI {
-        @Override
-        public boolean canRepair(ItemStack item) {
-            return item != null && isRepairable(item.clone());
-        }
-
-        @Override
-        public RepairQuote quoteRepair(Player player, ItemStack item) {
-            ItemStack input = item == null ? null : item.clone();
-            if (input == null || !isRepairable(input)) {
-                return new RepairQuote(false, input, null, damageOf(input), damageOf(input), 0, 0.0, economyName());
-            }
-            int previous = damageOf(input);
-            ItemStack result = repairResult(input);
-            return new RepairQuote(true, input, result, previous, 0, previous, repairPrice(input), economyName());
-        }
-
-        @Override
-        public EnchantQuote quoteEnchant(Player player, ItemStack item, ItemStack book) {
-            ItemStack itemCopy = item == null ? null : item.clone();
-            ItemStack bookCopy = book == null ? null : book.clone();
-            EnchantResult built = buildEnchantResult(itemCopy, bookCopy);
-            if (built == null) {
-                return new EnchantQuote(false, itemCopy, bookCopy, null, Map.of(), 0.0, economyName());
-            }
-            return new EnchantQuote(true, itemCopy, bookCopy, built.result, built.appliedEnchantments, built.price, economyName());
-        }
-
-        @Override
-        public Optional<BlacksmithSessionView> activeSession(UUID playerId) {
-            Session session = sessions.get(playerId);
-            if (session == null) return Optional.empty();
-            return Optional.of(new BlacksmithSessionView(
-                    session.playerId,
-                    session.sessionId,
-                    session.mode.name(),
-                    session.repairInput,
-                    session.enchantTarget,
-                    session.enchantBook,
-                    session.result,
-                    session.price,
-                    session.transactionActive));
-        }
-    }
-
     private static final class VaultHook {
         private final Object economy;
         private final Method getBalance;
         private final Method withdraw;
-        private final Method deposit;
         private final Method success;
-        private final Method getName;
 
-        private VaultHook(Object economy, Method getBalance, Method withdraw, Method deposit, Method success, Method getName) {
+        private VaultHook(Object economy, Method getBalance, Method withdraw, Method success) {
             this.economy = economy;
             this.getBalance = getBalance;
             this.withdraw = withdraw;
-            this.deposit = deposit;
             this.success = success;
-            this.getName = getName;
         }
 
         static VaultHook tryCreate() {
@@ -992,11 +712,9 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
                 Object provider = registration.getProvider();
                 Method getBalance = economyClass.getMethod("getBalance", OfflinePlayer.class);
                 Method withdraw = economyClass.getMethod("withdrawPlayer", OfflinePlayer.class, double.class);
-                Method deposit = economyClass.getMethod("depositPlayer", OfflinePlayer.class, double.class);
-                Method getName = economyClass.getMethod("getName");
                 Class<?> responseClass = Class.forName("net.milkbowl.vault.economy.EconomyResponse");
                 Method success = responseClass.getMethod("transactionSuccess");
-                return new VaultHook(provider, getBalance, withdraw, deposit, success, getName);
+                return new VaultHook(provider, getBalance, withdraw, success);
             } catch (Throwable ignored) {
                 return null;
             }
@@ -1016,24 +734,6 @@ public final class PlexonBlacksmithBridge extends JavaPlugin implements Listener
                 return Boolean.TRUE.equals(success.invoke(response));
             } catch (Throwable ignored) {
                 return false;
-            }
-        }
-
-        boolean refund(Player player, double amount) {
-            try {
-                Object response = deposit.invoke(economy, player, amount);
-                return Boolean.TRUE.equals(success.invoke(response));
-            } catch (Throwable ignored) {
-                return false;
-            }
-        }
-
-        String name() {
-            try {
-                Object value = getName.invoke(economy);
-                return value == null ? "Vault" : String.valueOf(value);
-            } catch (Throwable ignored) {
-                return "Vault";
             }
         }
     }

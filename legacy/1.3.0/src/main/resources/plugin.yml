@@ -1,0 +1,17 @@
+name: PlexonBlacksmith
+version: 1.3.0
+main: dev.plexon.blacksmith.PlexonBlacksmithBridge
+api-version: '1.21'
+author: ZpkDxGames
+description: Direct cached-input Blacksmith GUI for Paper 26.2 with Vault economy.
+softdepend:
+  - Vault
+commands:
+  blacksmith:
+    description: Open the Blacksmith workshop.
+    usage: /blacksmith
+    permission: plexon.blacksmith.use
+permissions:
+  plexon.blacksmith.use:
+    description: Allows use of /blacksmith.
+    default: true
