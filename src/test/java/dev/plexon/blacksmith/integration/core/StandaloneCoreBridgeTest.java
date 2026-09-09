@@ -7,7 +7,7 @@ class StandaloneCoreBridgeTest {
     @Test
     void absentCoreRemainsSafeStandalone() {
         CoreBridge bridge = new StandaloneCoreBridge(false, "-", "-", "PlexonCore is not installed");
-        assertEquals(">=1.0 <2.0", CoreBridge.SUPPORTED_API_RANGE);
+        assertEquals(">=1.0 <3.0", CoreBridge.SUPPORTED_API_RANGE);
         assertEquals("blacksmith", CoreBridge.MODULE_ID);
         assertEquals("STANDALONE", bridge.mode());
         assertFalse(bridge.available());

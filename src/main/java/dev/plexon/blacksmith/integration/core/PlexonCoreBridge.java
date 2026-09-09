@@ -109,7 +109,16 @@ public final class PlexonCoreBridge implements CoreBridge {
 
     private void update(ModuleState moduleState, IntegrationState integrationState, String newDetail) {
         if (!compatible || !ownsRegistration) return;
-        core.modules().updateState(MODULE_ID, moduleState, newDetail);
+        if (version.apiMajor() >= 2) {
+            if (!core.modules().updateState(MODULE_ID, plugin, moduleState, newDetail)) {
+                ownsRegistration = false;
+                registrationState = "NOT_REGISTERED";
+                detail = "Core module ownership changed before state update";
+                return;
+            }
+        } else {
+            core.modules().updateState(MODULE_ID, moduleState, newDetail);
+        }
         core.integrations().publish(
                 "PLEXON_BLACKSMITH",
                 plugin.getName(),
@@ -123,9 +132,13 @@ public final class PlexonCoreBridge implements CoreBridge {
 
     @Override public void unregister() {
         if (!ownsRegistration) return;
-        core.modules().find(MODULE_ID)
-                .filter(descriptor -> descriptor.plugin() == plugin)
-                .ifPresent(descriptor -> core.modules().unregister(MODULE_ID));
+        if (version.apiMajor() >= 2) {
+            core.modules().unregisterOwnedBy(plugin);
+        } else {
+            core.modules().find(MODULE_ID)
+                    .filter(descriptor -> descriptor.plugin() == plugin)
+                    .ifPresent(descriptor -> core.modules().unregister(MODULE_ID));
+        }
         if (compatible) {
             core.integrations().publish(
                     "PLEXON_BLACKSMITH",
