@@ -4,7 +4,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>dev.plexon</groupId>
   <artifactId>PlexonBlacksmith</artifactId>
-  <version>1.4.0</version>
+  <version>1.4.1</version>
   <name>PlexonBlacksmith</name>
   <description>Direct cached-input repair and enchanting service for the Plexon plugin family.</description>
   <url>https://github.com/ZpkDxGames/PlexonBlacksmith</url>
@@ -21,9 +21,9 @@
   <properties>
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.build.outputTimestamp>2026-09-07T00:00:00Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-09-09T00:00:00Z</project.build.outputTimestamp>
     <paper.version>26.2.build.121-stable</paper.version>
-    <plexoncore.version>1.0.0</plexoncore.version>
+    <plexoncore.version>2.0.4</plexoncore.version>
     <junit.version>6.0.3</junit.version>
   </properties>
 
