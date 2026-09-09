@@ -20,16 +20,16 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Provision PlexonCore 1.0.0
+      - name: Provision PlexonCore 2.0.4
         run: |
-          curl -fsSL -o /tmp/PlexonCore-1.0.0.jar \
-            https://github.com/ZpkDxGames/PlexonCore/releases/download/v1.0.0/PlexonCore-1.0.0.jar
-          echo '4abce6de93293e21b31cb874734430d5bdc77de17a4c3b98fd6a9006e1f13018  /tmp/PlexonCore-1.0.0.jar' | sha256sum -c -
+          curl -fsSL -o /tmp/PlexonCore-2.0.4.jar \
+            https://github.com/ZpkDxGames/PlexonCore/releases/download/v2.0.4/PlexonCore-2.0.4.jar
+          echo '61d625a717da9f46ee9231e1970d84b4c317ae12cf4090cdf7c9d39b6a1a9baf  /tmp/PlexonCore-2.0.4.jar' | sha256sum -c -
           mvn -B install:install-file \
-            -Dfile=/tmp/PlexonCore-1.0.0.jar \
+            -Dfile=/tmp/PlexonCore-2.0.4.jar \
             -DgroupId=com.zpkdxgames \
             -DartifactId=PlexonCore \
-            -Dversion=1.0.0 \
+            -Dversion=2.0.4 \
             -Dpackaging=jar \
             -DgeneratePom=true
 
@@ -38,12 +38,12 @@ jobs:
 
       - name: Verify plugin metadata
         run: |
-          unzip -p target/PlexonBlacksmith-1.4.0.jar plugin.yml | grep -F "version: '1.4.0'"
-          unzip -p target/PlexonBlacksmith-1.4.0.jar plugin.yml | grep -F '  - PlexonCore'
+          unzip -p target/PlexonBlacksmith-1.4.1.jar plugin.yml | grep -F "version: '1.4.1'"
+          unzip -p target/PlexonBlacksmith-1.4.1.jar plugin.yml | grep -F '  - PlexonCore'
 
       - name: Verify Core is not shaded
         run: |
-          if jar tf target/PlexonBlacksmith-1.4.0.jar | grep -q '^com/zpkdxgames/plexoncore/'; then
+          if jar tf target/PlexonBlacksmith-1.4.1.jar | grep -q '^com/zpkdxgames/plexoncore/'; then
             echo 'PlexonCore classes were shaded into PlexonBlacksmith.' >&2
             exit 1
           fi
@@ -54,12 +54,12 @@ jobs:
       - name: Checksums
         run: |
           cd target
-          sha256sum PlexonBlacksmith-1.4.0.jar > SHA256SUMS.txt
+          sha256sum PlexonBlacksmith-1.4.1.jar > SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PlexonBlacksmith-1.4.0
+          name: PlexonBlacksmith-1.4.1
           path: |
-            target/PlexonBlacksmith-1.4.0.jar
+            target/PlexonBlacksmith-1.4.1.jar
             target/SHA256SUMS.txt
           if-no-files-found: error
