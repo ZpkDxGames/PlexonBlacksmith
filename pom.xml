@@ -22,7 +22,8 @@
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.outputTimestamp>2026-09-09T00:00:00Z</project.build.outputTimestamp>
-    <paper.version>26.2.build.121-stable</paper.version>
+    <!-- MockBukkit 4.116.1 is built against this exact 26.2 API. The plugin remains runtime-compatible with newer 26.2 stable server builds. -->
+    <paper.version>26.2.build.111-stable</paper.version>
     <plexoncore.version>2.0.4</plexoncore.version>
     <junit.version>6.0.3</junit.version>
   </properties>
@@ -35,6 +36,12 @@
   </repositories>
 
   <dependencies>
+    <dependency>
+      <groupId>org.mockbukkit.mockbukkit</groupId>
+      <artifactId>mockbukkit-v26.2</artifactId>
+      <version>4.116.1</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>io.papermc.paper</groupId>
       <artifactId>paper-api</artifactId>
@@ -51,12 +58,6 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>${junit.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.mockbukkit.mockbukkit</groupId>
-      <artifactId>mockbukkit-v26.2</artifactId>
-      <version>4.116.1</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

@@ -8,9 +8,22 @@ import java.util.UUID;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.MockBukkit;
 
 class ApiValueSafetyTest {
+    @BeforeEach
+    void setUpBukkitRegistry() {
+        MockBukkit.mock();
+    }
+
+    @AfterEach
+    void tearDownBukkitRegistry() {
+        MockBukkit.unmock();
+    }
+
     @Test
     void enchantQuoteCopiesAndFreezesAppliedEnchantments() {
         Map<String, Integer> mutable = new LinkedHashMap<>();
