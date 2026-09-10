@@ -2,7 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - 'phase2/**'
   pull_request:
   workflow_dispatch:
 
@@ -36,14 +38,15 @@ jobs:
       - name: Verify
         run: mvn -B clean verify
 
-      - name: Verify plugin metadata
+      - name: Verify distribution
         run: |
-          unzip -p target/PlexonBlacksmith-1.4.1.jar plugin.yml | grep -F "version: '1.4.1'"
-          unzip -p target/PlexonBlacksmith-1.4.1.jar plugin.yml | grep -F '  - PlexonCore'
-
-      - name: Verify Core is not shaded
-        run: |
-          if jar tf target/PlexonBlacksmith-1.4.1.jar | grep -q '^com/zpkdxgames/plexoncore/'; then
+          set -euo pipefail
+          JAR=target/PlexonBlacksmith-2.0.0-rc.1.jar
+          test -s "$JAR"
+          unzip -p "$JAR" plugin.yml | grep -F "version: '2.0.0-rc.1'"
+          unzip -p "$JAR" plugin.yml | grep -F '  - PlexonCore'
+          unzip -p "$JAR" config.yml | grep -F 'combine: true'
+          if jar tf "$JAR" | grep -q '^com/zpkdxgames/plexoncore/'; then
             echo 'PlexonCore classes were shaded into PlexonBlacksmith.' >&2
             exit 1
           fi
@@ -54,12 +57,13 @@ jobs:
       - name: Checksums
         run: |
           cd target
-          sha256sum PlexonBlacksmith-1.4.1.jar > SHA256SUMS.txt
+          sha256sum PlexonBlacksmith-2.0.0-rc.1.jar > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PlexonBlacksmith-1.4.1
+          name: PlexonBlacksmith-2.0.0-rc.1
           path: |
-            target/PlexonBlacksmith-1.4.1.jar
+            target/PlexonBlacksmith-2.0.0-rc.1.jar
             target/SHA256SUMS.txt
           if-no-files-found: error

@@ -3,19 +3,19 @@ version: '${project.version}'
 main: dev.plexon.blacksmith.PlexonBlacksmithBridge
 api-version: '1.21'
 author: ZpkDxGames
-description: Direct cached-input Blacksmith GUI for Paper 26.2 with optional PlexonCore integration.
+description: Phase 2 exact-item repair, combine and enchanting workstation for Paper 26.2.
 softdepend:
   - PlexonCore
   - Vault
 commands:
   blacksmith:
-    description: Opens the Plexon Blacksmith forge.
+    description: Opens the Plexon Blacksmith workstation.
     usage: /blacksmith [diagnostics|reload]
     permission: plexon.blacksmith.use
 permissions:
   plexon.blacksmith.use:
-    description: Allows use of the Plexon Blacksmith GUI.
+    description: Allows use of the Plexon Blacksmith workstation.
     default: true
   plexon.blacksmith.admin:
-    description: Allows PlexonBlacksmith diagnostics and reload operations.
+    description: Allows diagnostics and safe configuration reloads.
     default: op

@@ -1,29 +1,32 @@
 # Changelog
 
-## 1.4.0 — 2026-09-07
+## 2.0.0-rc.1 — Phase 2 release candidate
 
 ### Added
-- Optional PlexonCore 1.x bridge and `blacksmith` module registration.
-- `PLEXON_BLACKSMITH` integration capability publication.
-- Public `PlexonBlacksmithAPI` through Bukkit ServicesManager.
-- `PlexonItemRepairedEvent` and `PlexonItemEnchantedEvent` with non-empty transaction/event IDs.
-- Session IDs/nonces and per-session transaction guards.
-- Vault refund path for post-charge/pre-commit failures.
-- `/blacksmith diagnostics` and `/blacksmith reload` admin operations.
-- Explicit double-click / collect-to-cursor GUI hardening.
-- Java 25 / Paper 26.2 Maven build, CI verification, no-Core-shading check, and tag-driven release workflow.
+- Three-page 54-slot premium workstation: Repair, Combine and Enchant.
+- Safe same-identity combine operation that changes only primary-item durability.
+- Configurable pricing and feature flags through `config.yml`.
+- Confirmation state for donor/book consumption and expensive repairs.
+- Stable Close control, explicit READY/WAITING/LOCKED/confirmation states and MiniMessage/Adventure presentation.
+- `CombineQuote`, `canCombine`, `quoteCombine` and `PlexonItemsCombinedEvent` public contracts.
+- Expanded diagnostics, source/runtime certification status and config validation reporting.
+- Regression coverage for exact custom PDC preservation, combine identity rejection, one-charge/one-result behavior and API defensive copies.
 
 ### Preserved
-- Production 1.3.0 direct item insertion UX.
-- Repair and Enchant pages/layout.
-- Exact repair/enchant pricing rules.
-- ItemStack clone-based custom metadata preservation.
-- Page-to-page cached inputs.
-- Safe return/drop fallback when closing.
-- Vault as the real economy provider.
+- Plugin-owned cached-input inventory architecture.
+- Vault/TheosisEconomy provider contract.
+- Main-thread transaction guard, compensating refund path, Core 1/2 compatibility and standalone fallback.
+- Existing repair/enchant quote and post-success event contracts.
+- Close/quit/reload/disable unused-input return safety.
 
-### Hardened
-- Success events fire only after payment and item output commit.
-- Rapid confirmation clicks cannot execute overlapping transactions.
-- Failed output commits preserve cached inputs and attempt exactly one refund.
-- Disconnect/shutdown paths return cached inputs instead of leaving sessions resident.
+### Intentionally not implemented
+- Generic material upgrades. Arbitrary custom-item ownership cannot be transformed safely without explicit adapters/recipes.
+
+### Certification
+- Candidate only. PlexonCraft runtime certification remains required before stable `2.0.0`.
+
+## 1.4.1
+- PlexonCore 2 lifecycle readiness compatibility patch.
+
+## 1.4.0
+- PlexonCore migration, public API/events and transaction hardening.

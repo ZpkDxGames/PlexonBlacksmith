@@ -4,9 +4,9 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>dev.plexon</groupId>
   <artifactId>PlexonBlacksmith</artifactId>
-  <version>1.4.1</version>
+  <version>2.0.0-rc.1</version>
   <name>PlexonBlacksmith</name>
-  <description>Direct cached-input repair and enchanting service for the Plexon plugin family.</description>
+  <description>Phase 2 exact-item repair, combine and enchanting workstation for the Plexon ecosystem.</description>
   <url>https://github.com/ZpkDxGames/PlexonBlacksmith</url>
 
   <developers>
