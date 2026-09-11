@@ -5,17 +5,24 @@ on:
     branches:
       - main
       - 'phase2/**'
+      - 'phase3/**'
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  PLUGIN_VERSION: 2.0.0-rc.1
+  PHASE2_SHA: 475f1e8005fd6ed5f9118be7385473a69a574b05
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,6 +31,7 @@ jobs:
 
       - name: Provision PlexonCore 2.0.4
         run: |
+          set -euo pipefail
           curl -fsSL -o /tmp/PlexonCore-2.0.4.jar \
             https://github.com/ZpkDxGames/PlexonCore/releases/download/v2.0.4/PlexonCore-2.0.4.jar
           echo '61d625a717da9f46ee9231e1970d84b4c317ae12cf4090cdf7c9d39b6a1a9baf  /tmp/PlexonCore-2.0.4.jar' | sha256sum -c -
@@ -35,35 +43,83 @@ jobs:
             -Dpackaging=jar \
             -DgeneratePom=true
 
+      - name: Verify candidate ancestry and dependencies
+        run: |
+          set -euo pipefail
+          test "$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)" = "${PLUGIN_VERSION}"
+          test "$(mvn -q -DforceStdout help:evaluate -Dexpression=plexoncore.version)" = "2.0.4"
+          test "$(git merge-base "${PHASE2_SHA}" HEAD)" = "${PHASE2_SHA}"
+
       - name: Verify
         run: mvn -B clean verify
 
-      - name: Verify distribution
+      - name: Build exact test summary
         run: |
           set -euo pipefail
-          JAR=target/PlexonBlacksmith-2.0.0-rc.1.jar
+          python3 - <<'PY'
+          import glob, pathlib, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for path in sorted(glob.glob('target/surefire-reports/TEST-*.xml')):
+              for case in ET.parse(path).getroot().iter('testcase'):
+                  tests += 1
+                  failures += case.find('failure') is not None
+                  errors += case.find('error') is not None
+                  skipped += case.find('skipped') is not None
+          if tests == 0:
+              raise SystemExit('No tests discovered')
+          pathlib.Path('target/TEST_SUMMARY.txt').write_text(
+              f'tests={tests}\nfailures={failures}\nerrors={errors}\nskipped={skipped}\n', encoding='utf-8')
+          if failures or errors or skipped:
+              raise SystemExit(f'Candidate suite not clean: {tests=} {failures=} {errors=} {skipped=}')
+          print(f'Tests: {tests}; failures=0; errors=0; skipped=0')
+          PY
+
+      - name: Verify distribution and isolation
+        run: |
+          set -euo pipefail
+          JAR=target/PlexonBlacksmith-${PLUGIN_VERSION}.jar
           test -s "$JAR"
-          unzip -p "$JAR" plugin.yml | grep -F "version: '2.0.0-rc.1'"
+          unzip -p "$JAR" plugin.yml | grep -F "version: '${PLUGIN_VERSION}'"
+          unzip -p "$JAR" plugin.yml | grep -F 'main: dev.plexon.blacksmith.PlexonBlacksmithPhase3'
           unzip -p "$JAR" plugin.yml | grep -F '  - PlexonCore'
           unzip -p "$JAR" config.yml | grep -F 'combine: true'
+          jar tf "$JAR" | grep -F 'dev/plexon/blacksmith/PlexonBlacksmithPhase3.class'
+          jar tf "$JAR" | grep -F 'dev/plexon/blacksmith/api/CombineQuote.class'
+          jar tf "$JAR" | grep -F 'dev/plexon/blacksmith/event/PlexonItemsCombinedEvent.class'
+          unzip -p "$JAR" META-INF/MANIFEST.MF | tr -d '\r' | grep -F "Implementation-Version: ${PLUGIN_VERSION}"
+          javap -verbose -classpath "$JAR" dev.plexon.blacksmith.PlexonBlacksmithPhase3 | grep -F 'major version: 69'
           if jar tf "$JAR" | grep -q '^com/zpkdxgames/plexoncore/'; then
             echo 'PlexonCore classes were shaded into PlexonBlacksmith.' >&2
             exit 1
           fi
 
       - name: Diff check
-        run: git diff --check
+        run: git diff --check "${PHASE2_SHA}...HEAD"
 
-      - name: Checksums
+      - name: Checksums and provenance
         run: |
+          set -euo pipefail
           cd target
-          sha256sum PlexonBlacksmith-2.0.0-rc.1.jar > SHA256SUMS.txt
+          sha256sum PlexonBlacksmith-${PLUGIN_VERSION}.jar > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
+          cat > PROVENANCE.txt <<EOF
+          repository=ZpkDxGames/PlexonBlacksmith
+          branch=${GITHUB_REF_NAME}
+          candidate_sha=${GITHUB_SHA}
+          version=${PLUGIN_VERSION}
+          phase2_parent=${PHASE2_SHA}
+          java=25
+          class_major=69
+          plexoncore=2.0.4
+          runtime_certification=NOT_EXECUTED
+          EOF
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PlexonBlacksmith-2.0.0-rc.1
+          name: PlexonBlacksmith-${{ env.PLUGIN_VERSION }}-${{ github.sha }}
           path: |
-            target/PlexonBlacksmith-2.0.0-rc.1.jar
+            target/PlexonBlacksmith-${{ env.PLUGIN_VERSION }}.jar
             target/SHA256SUMS.txt
+            target/TEST_SUMMARY.txt
+            target/PROVENANCE.txt
           if-no-files-found: error

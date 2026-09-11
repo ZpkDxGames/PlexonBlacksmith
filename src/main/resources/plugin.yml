@@ -1,9 +1,9 @@
 name: PlexonBlacksmith
 version: '${project.version}'
-main: dev.plexon.blacksmith.PlexonBlacksmithBridge
+main: dev.plexon.blacksmith.PlexonBlacksmithPhase3
 api-version: '1.21'
 author: ZpkDxGames
-description: Phase 2 exact-item repair, combine and enchanting workstation for Paper 26.2.
+description: Phase 3 player UX over the exact-item repair, combine and enchanting workstation for Paper 26.2.
 softdepend:
   - PlexonCore
   - Vault
