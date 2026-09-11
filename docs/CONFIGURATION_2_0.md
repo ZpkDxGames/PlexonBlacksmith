@@ -30,4 +30,8 @@ Out-of-range/non-finite numeric settings fall back to safe defaults and are repo
 
 ## Reload
 
-`/blacksmith reload` first closes every active workstation session and returns unused inputs, then reloads configuration and re-resolves the current Vault provider. This prevents live sessions from changing price/ownership rules halfway through a transaction.
+Stable 2.0 uses a fail-closed reload boundary.
+
+`/blacksmith reload` first parses the candidate `config.yml` without changing the running plugin. If the file is missing or malformed, reload is rejected and the accepted runtime plus every active exact-ItemStack custody session remain unchanged.
+
+Only after the candidate YAML is parseable does the existing reload path run: active workstation sessions are closed, unused inputs are returned, configuration is reloaded and the current Vault provider is re-resolved. This prevents both malformed configuration fallback and live sessions changing price/ownership rules halfway through a transaction.
