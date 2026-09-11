@@ -1,0 +1,52 @@
+name: Publish PlexonBlacksmith 2.0.0-rc.2 once
+on:
+  push:
+    branches: [phase3/release-v2.0.0-rc.2]
+    paths: ['.github/workflows/publish-phase3-rc.2-once.yml']
+permissions: {contents: write}
+env: {PLUGIN_VERSION: 2.0.0-rc.2}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: {fetch-depth: 0}
+      - name: Prove accepted ancestry and release-only delta
+        run: |
+          set -euo pipefail
+          UX=f46290bc0192945c3f1f8db51bf6b6b58d69414c; git merge-base --is-ancestor "$UX" HEAD
+          git diff --name-only "$UX" HEAD | tee /tmp/delta
+          if grep -Ev '^(pom\.xml|\.github/workflows/build\.yml|\.github/workflows/publish-phase3-rc\.2-once\.yml|\.release/RELEASE_NOTES_2\.0\.0-rc\.2\.md)$' /tmp/delta | grep -q .; then exit 1; fi
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '25', cache: maven}
+      - name: Provision PlexonCore
+        run: |
+          curl -fsSL -o /tmp/core.jar https://github.com/ZpkDxGames/PlexonCore/releases/download/v2.0.4/PlexonCore-2.0.4.jar
+          echo '61d625a717da9f46ee9231e1970d84b4c317ae12cf4090cdf7c9d39b6a1a9baf  /tmp/core.jar'|sha256sum -c -
+          mvn -B install:install-file -Dfile=/tmp/core.jar -DgroupId=com.zpkdxgames -DartifactId=PlexonCore -Dversion=2.0.4 -Dpackaging=jar -DgeneratePom=true
+      - name: Build exact candidate
+        run: mvn -B clean verify
+      - name: Evidence
+        run: |
+          set -euo pipefail
+          test "$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)" = "$PLUGIN_VERSION"; test "$(mvn -q -DforceStdout help:evaluate -Dexpression=paper.version)" = 26.2.build.111-stable
+          JAR=target/PlexonBlacksmith-${PLUGIN_VERSION}.jar; test -s "$JAR"; jar tf "$JAR" > target/jar-contents.txt
+          unzip -p "$JAR" plugin.yml | grep -F "version: '${PLUGIN_VERSION}'"; javap -verbose -classpath "$JAR" dev.plexon.blacksmith.PlexonBlacksmithPhase3 | grep -F 'major version: 69'
+          for prefix in 'com/zpkdxgames/plexoncore/' 'net/milkbowl/vault/' 'me/clip/placeholderapi/' 'net/luckperms/api/'; do if grep -q "^$prefix" target/jar-contents.txt; then exit 1; fi; done
+          python3 - <<'PY'
+          import glob,xml.etree.ElementTree as ET,pathlib
+          t=f=e=s=0
+          for p in glob.glob('target/surefire-reports/TEST-*.xml'):
+              for c in ET.parse(p).getroot().iter('testcase'): t+=1; f+=c.find('failure') is not None; e+=c.find('error') is not None; s+=c.find('skipped') is not None
+          if not t or f or e or s: raise SystemExit(f'{t=} {f=} {e=} {s=}')
+          pathlib.Path('target/TEST_SUMMARY.txt').write_text(f'tests={t}\nfailures={f}\nerrors={e}\nskipped={s}\n'); print(f'TEST_COUNT={t} FAILURES={f} ERRORS={e} SKIPPED={s}')
+          PY
+          (cd target && sha256sum "PlexonBlacksmith-${PLUGIN_VERSION}.jar" > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          size=$(stat -c%s "$JAR"); digest=$(sha256sum "$JAR"|awk '{print $1}'); { echo repository=$GITHUB_REPOSITORY; echo commit=$GITHUB_SHA; echo accepted_phase3=f46290bc0192945c3f1f8db51bf6b6b58d69414c; echo version=$PLUGIN_VERSION; echo java_major=69; echo paper=26.2; echo plexoncore=2.0.4; echo jar_size=$size; echo jar_sha256=$digest; echo runtime_certification=NOT_EXECUTED; } > target/PROVENANCE.txt
+      - name: Publish immutable prerelease
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail; TAG=v2.0.0-rc.2
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then exit 1; fi
+          if gh release view "$TAG" >/dev/null 2>&1; then exit 1; fi
+          gh release create "$TAG" target/PlexonBlacksmith-2.0.0-rc.2.jar target/SHA256SUMS.txt target/TEST_SUMMARY.txt target/PROVENANCE.txt --target "$GITHUB_SHA" --prerelease --title 'PlexonBlacksmith 2.0.0-rc.2' --notes-file .release/RELEASE_NOTES_2.0.0-rc.2.md
