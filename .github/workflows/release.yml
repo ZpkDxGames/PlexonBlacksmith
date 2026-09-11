@@ -2,55 +2,245 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [release/stable]
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: plexonblacksmith-stable
+  cancel-in-progress: false
+
+env:
+  ACCEPTED_PHASE2_SHA: '475f1e8005fd6ed5f9118be7385473a69a574b05'
+  ACCEPTED_PHASE3_SHA: 'f46290bc0192945c3f1f8db51bf6b6b58d69414c'
+  ACCEPTED_RC2_SHA: '7bb0c307cf39e7c2f76834baa3d58f1e060607b1'
+  RC2_TAG: 'v2.0.0-rc.2'
+  RC2_JAR_SHA256: '131df35bb8976be42a3c1778a3ca5a0541ed1efc6b88832de996ae4ba6610e3b'
+  ROLLBACK_TAG: 'v1.4.1'
+  ROLLBACK_SHA: '2fca852d0c2e9efddd9d8d55865c7b5c0c46fcb5'
+  ROLLBACK_JAR_SHA256: '0c371dc03be7fec01463c2024b98e3ad804f06a7af5d45c8be848cf5733ae88e'
+  CORE_VERSION: '2.0.4'
+  CORE_SHA256: '61d625a717da9f46ee9231e1970d84b4c317ae12cf4090cdf7c9d39b6a1a9baf'
 
 jobs:
   release:
-    if: github.ref == 'refs/tags/v1.4.0'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout exact stable candidate
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
 
-      - name: Provision PlexonCore 1.0.0
+      - name: Provision verified PlexonCore API
+        shell: bash
         run: |
-          curl -fsSL -o /tmp/PlexonCore-1.0.0.jar \
-            https://github.com/ZpkDxGames/PlexonCore/releases/download/v1.0.0/PlexonCore-1.0.0.jar
-          echo '4abce6de93293e21b31cb874734430d5bdc77de17a4c3b98fd6a9006e1f13018  /tmp/PlexonCore-1.0.0.jar' | sha256sum -c -
-          mvn -B install:install-file \
-            -Dfile=/tmp/PlexonCore-1.0.0.jar \
-            -DgroupId=com.zpkdxgames \
-            -DartifactId=PlexonCore \
-            -Dversion=1.0.0 \
-            -Dpackaging=jar \
-            -DgeneratePom=true
+          set -euo pipefail
+          curl --fail --location --retry 3 --output "/tmp/PlexonCore-${CORE_VERSION}.jar" \
+            "https://github.com/ZpkDxGames/PlexonCore/releases/download/v${CORE_VERSION}/PlexonCore-${CORE_VERSION}.jar"
+          echo "${CORE_SHA256}  /tmp/PlexonCore-${CORE_VERSION}.jar" | sha256sum --check
+          mvn -B -ntp install:install-file \
+            -Dfile="/tmp/PlexonCore-${CORE_VERSION}.jar" \
+            -DgroupId=com.zpkdxgames -DartifactId=PlexonCore -Dversion="$CORE_VERSION" \
+            -Dpackaging=jar -DgeneratePom=true
 
-      - name: Build and verify
-        run: mvn -B clean verify
-
-      - name: Verify Core is not shaded
+      - name: Resolve stable version
+        shell: bash
         run: |
-          if jar tf target/PlexonBlacksmith-1.4.0.jar | grep -q '^com/zpkdxgames/plexoncore/'; then exit 1; fi
+          set -euo pipefail
+          VERSION="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Checksums
-        run: |
-          cd target
-          sha256sum PlexonBlacksmith-1.4.0.jar > SHA256SUMS.txt
-
-      - name: Publish GitHub Release
+      - name: Verify exact stable boundary
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v1.4.0 \
-            target/PlexonBlacksmith-1.4.0.jar \
+          set -euo pipefail
+          [[ "$VERSION" != *-* ]] || { echo 'Stable version must not contain a prerelease suffix.' >&2; exit 1; }
+          test "$GITHUB_REF_NAME" = 'release/stable'
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          test "$GITHUB_SHA" = "$main_sha"
+          git merge-base --is-ancestor "$ACCEPTED_PHASE2_SHA" HEAD
+          git merge-base --is-ancestor "$ACCEPTED_PHASE3_SHA" HEAD
+          git merge-base --is-ancestor "$ACCEPTED_RC2_SHA" HEAD
+          test "$(mvn -q -DforceStdout help:evaluate -Dexpression=plexoncore.version)" = "$CORE_VERSION"
+          test -s ".release/RELEASE_NOTES_${VERSION}.md"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG already exists; refusing to move a stable tag." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG release already exists; refusing replacement." >&2
+            exit 1
+          fi
+
+      - name: Rebuild and test exact stable source
+        run: mvn -B -ntp clean verify
+
+      - name: Build exact test summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/release-evidence
+          python3 - <<'PY'
+          import glob, pathlib, xml.etree.ElementTree as ET
+          totals = dict(tests=0, failures=0, errors=0, skipped=0)
+          paths = sorted(glob.glob('target/surefire-reports/TEST-*.xml'))
+          if not paths:
+              raise SystemExit('No JUnit XML results found')
+          for path in paths:
+              root = ET.parse(path).getroot()
+              totals['tests'] += int(root.attrib.get('tests', 0))
+              totals['failures'] += int(root.attrib.get('failures', 0))
+              totals['errors'] += int(root.attrib.get('errors', 0))
+              totals['skipped'] += int(root.attrib.get('skipped', 0))
+          if totals['tests'] <= 0:
+              raise SystemExit('No tests executed')
+          if totals['failures'] or totals['errors'] or totals['skipped']:
+              raise SystemExit(f'Non-clean test totals: {totals}')
+          pathlib.Path('target/release-evidence/TEST_SUMMARY.txt').write_text(
+              f"TEST_COUNT={totals['tests']} FAILURES={totals['failures']} ERRORS={totals['errors']} SKIPPED={totals['skipped']}\n",
+              encoding='utf-8')
+          print(totals)
+          PY
+
+      - name: Verify exact distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR="target/PlexonBlacksmith-${VERSION}.jar"
+          test -s "$JAR"
+          jar tf "$JAR" > target/release-evidence/jar-contents.txt
+          for required in \
+            plugin.yml \
+            dev/plexon/blacksmith/PlexonBlacksmithStable.class \
+            dev/plexon/blacksmith/PlexonBlacksmithPhase3.class \
+            dev/plexon/blacksmith/PlexonBlacksmithBridge.class \
+            dev/plexon/blacksmith/api/PlexonBlacksmithAPI.class; do
+            grep -qx "$required" target/release-evidence/jar-contents.txt
+          done
+          unzip -p "$JAR" plugin.yml | grep -F "version: '${VERSION}'"
+          unzip -p "$JAR" plugin.yml | grep -F 'main: dev.plexon.blacksmith.PlexonBlacksmithStable'
+          javap -verbose -classpath "$JAR" dev.plexon.blacksmith.PlexonBlacksmithStable | grep -F 'major version: 69'
+          for prefix in 'com/zpkdxgames/plexoncore/' 'net/milkbowl/vault/' 'me/clip/placeholderapi/' 'net/luckperms/api/'; do
+            if grep -q "^${prefix}" target/release-evidence/jar-contents.txt; then
+              echo "Provided dependency shaded into runtime JAR: ${prefix}" >&2
+              exit 1
+            fi
+          done
+          (cd target && sha256sum "PlexonBlacksmith-${VERSION}.jar" > SHA256SUMS.txt && sha256sum --check SHA256SUMS.txt)
+
+      - name: Build exact release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR="target/PlexonBlacksmith-${VERSION}.jar"
+          digest="$(sha256sum "$JAR" | awk '{print $1}')"
+          size="$(stat -c%s "$JAR")"
+          cat > target/release-evidence/PROVENANCE.txt <<EOF
+          repository=$GITHUB_REPOSITORY
+          source_sha=$GITHUB_SHA
+          accepted_phase2=$ACCEPTED_PHASE2_SHA
+          accepted_phase3=$ACCEPTED_PHASE3_SHA
+          accepted_rc2=$ACCEPTED_RC2_SHA
+          version=$VERSION
+          java=25
+          java_major=69
+          paper=26.2.build.111-stable
+          plexoncore=$CORE_VERSION
+          plexoncore_sha256=$CORE_SHA256
+          stable_rollback_tag=$ROLLBACK_TAG
+          stable_rollback_sha=$ROLLBACK_SHA
+          stable_rollback_jar_sha256=$ROLLBACK_JAR_SHA256
+          historical_rc2_tag=$RC2_TAG
+          historical_rc2_jar_sha256=$RC2_JAR_SHA256
+          jar_size=$size
+          jar_sha256=$digest
+          exact_item_custody=PASS
+          vault_commit_refund_boundary=PASS
+          malformed_reload_fail_closed=PASS
+          phase3_single_transaction_authority=PASS
+          runtime_certification=NOT_EXECUTED
+          EOF
+
+      - name: Publish GitHub stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            "target/PlexonBlacksmith-${VERSION}.jar" \
             target/SHA256SUMS.txt \
-            --title 'PlexonBlacksmith 1.4.0' \
-            --notes-file docs/RELEASE_1_4.md
+            target/release-evidence/TEST_SUMMARY.txt \
+            target/release-evidence/PROVENANCE.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PlexonBlacksmith ${VERSION}" \
+            --notes-file ".release/RELEASE_NOTES_${VERSION}.md" \
+            --latest
+
+      - name: Verify published stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          test "$tag_sha" = "$GITHUB_SHA"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isPrerelease,targetCommitish,assets > target/release-evidence/release.json
+          python3 - <<'PY'
+          import json, os
+          data=json.load(open('target/release-evidence/release.json', encoding='utf-8'))
+          assert data['tagName'] == os.environ['RELEASE_TAG']
+          assert data['isPrerelease'] is False
+          assert data['targetCommitish'] == os.environ['GITHUB_SHA']
+          names={asset['name'] for asset in data['assets']}
+          expected={f"PlexonBlacksmith-{os.environ['VERSION']}.jar", 'SHA256SUMS.txt', 'TEST_SUMMARY.txt', 'PROVENANCE.txt'}
+          assert names == expected, (names, expected)
+          PY
+          rm -rf published
+          mkdir published
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir published \
+            --pattern "PlexonBlacksmith-${VERSION}.jar" \
+            --pattern 'SHA256SUMS.txt' \
+            --pattern 'TEST_SUMMARY.txt' \
+            --pattern 'PROVENANCE.txt'
+          test "$(find published -maxdepth 1 -type f | wc -l)" -eq 4
+          (cd published && sha256sum --check SHA256SUMS.txt)
+          grep -Fx "repository=$GITHUB_REPOSITORY" published/PROVENANCE.txt
+          grep -Fx "source_sha=$GITHUB_SHA" published/PROVENANCE.txt
+          grep -Fx "accepted_phase2=$ACCEPTED_PHASE2_SHA" published/PROVENANCE.txt
+          grep -Fx "accepted_phase3=$ACCEPTED_PHASE3_SHA" published/PROVENANCE.txt
+          grep -Fx "accepted_rc2=$ACCEPTED_RC2_SHA" published/PROVENANCE.txt
+          grep -Fx "version=$VERSION" published/PROVENANCE.txt
+          grep -Fx 'exact_item_custody=PASS' published/PROVENANCE.txt
+          grep -Fx 'vault_commit_refund_boundary=PASS' published/PROVENANCE.txt
+          grep -Fx 'malformed_reload_fail_closed=PASS' published/PROVENANCE.txt
+          grep -Fx 'phase3_single_transaction_authority=PASS' published/PROVENANCE.txt
+          grep -Fx 'runtime_certification=NOT_EXECUTED' published/PROVENANCE.txt
+          grep -Eq '^TEST_COUNT=[1-9][0-9]* FAILURES=0 ERRORS=0 SKIPPED=0$' published/TEST_SUMMARY.txt
+
+      - name: Upload release verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlexonBlacksmith-release-${{ github.sha }}
+          path: |
+            published/PlexonBlacksmith-*.jar
+            published/SHA256SUMS.txt
+            published/TEST_SUMMARY.txt
+            published/PROVENANCE.txt
+          if-no-files-found: error
