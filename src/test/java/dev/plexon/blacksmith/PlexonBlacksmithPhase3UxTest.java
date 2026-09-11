@@ -48,14 +48,14 @@ class PlexonBlacksmithPhase3UxTest {
     private static final int STATUS = 51;
 
     ServerMock server;
-    PlexonBlacksmithPhase3 plugin;
+    PlexonBlacksmithStable plugin;
     PlayerMock player;
     PlexonBlacksmithAPI api;
 
     @BeforeEach
     void start() {
         server = MockBukkit.mock();
-        plugin = MockBukkit.load(PlexonBlacksmithPhase3.class);
+        plugin = MockBukkit.load(PlexonBlacksmithStable.class);
         player = server.addPlayer("UxPlayer");
         api = server.getServicesManager().load(PlexonBlacksmithAPI.class);
         assertNotNull(api);

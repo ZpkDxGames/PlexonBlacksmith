@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class PlexonBlacksmithPhase3ArchitectureTest {
     private static final Path UX = Path.of("src/main/java/dev/plexon/blacksmith/PlexonBlacksmithPhase3.java");
+    private static final Path STABLE = Path.of("src/main/java/dev/plexon/blacksmith/PlexonBlacksmithStable.java");
 
     @Test
     void phase3LayerDelegatesToPhase2AuthorityWithoutSecondTransactionEngine() throws Exception {
@@ -21,6 +22,17 @@ class PlexonBlacksmithPhase3ArchitectureTest {
     }
 
     @Test
+    void stableEntrypointOnlyAddsFailClosedReloadBoundary() throws Exception {
+        String source = Files.readString(STABLE);
+        assertTrue(source.contains("extends PlexonBlacksmithPhase3"));
+        assertTrue(source.contains("candidate.load(configFile)"));
+        assertTrue(source.contains("return super.onCommand(sender, command, label, args)"));
+        assertFalse(source.contains("withdrawPlayer"));
+        assertFalse(source.contains("depositPlayer"));
+        assertFalse(source.contains("returnStoredInputs"));
+    }
+
+    @Test
     void noRepeatingGuiOrPerTickRefreshWasIntroduced() throws Exception {
         String source = Files.readString(UX);
         assertFalse(source.contains("runTaskTimer"));
@@ -30,9 +42,9 @@ class PlexonBlacksmithPhase3ArchitectureTest {
     }
 
     @Test
-    void pluginDescriptorUsesPhase3ProductLayerAndKeepsExistingCommandContract() throws Exception {
+    void pluginDescriptorUsesStablePhase3ProductLayerAndKeepsExistingCommandContract() throws Exception {
         String pluginYml = Files.readString(Path.of("src/main/resources/plugin.yml"));
-        assertTrue(pluginYml.contains("main: dev.plexon.blacksmith.PlexonBlacksmithPhase3"));
+        assertTrue(pluginYml.contains("main: dev.plexon.blacksmith.PlexonBlacksmithStable"));
         assertTrue(pluginYml.contains("blacksmith:"));
         assertTrue(pluginYml.contains("permission: plexon.blacksmith.use"));
         assertTrue(pluginYml.contains("- Vault"));

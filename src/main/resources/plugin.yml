@@ -1,6 +1,6 @@
 name: PlexonBlacksmith
 version: '${project.version}'
-main: dev.plexon.blacksmith.PlexonBlacksmithPhase3
+main: dev.plexon.blacksmith.PlexonBlacksmithStable
 api-version: '1.21'
 author: ZpkDxGames
 description: Phase 3 player UX over the exact-item repair, combine and enchanting workstation for Paper 26.2.

@@ -41,13 +41,13 @@ class PlexonBlacksmithRuntimeTest {
     private static final int PRIMARY_ACTION = 49;
 
     ServerMock server;
-    PlexonBlacksmithPhase3 plugin;
+    PlexonBlacksmithStable plugin;
     PlayerMock player;
 
     @BeforeEach
     void start() {
         server = MockBukkit.mock();
-        plugin = MockBukkit.load(PlexonBlacksmithPhase3.class);
+        plugin = MockBukkit.load(PlexonBlacksmithStable.class);
         player = server.addPlayer("Tonim");
         assertTrue(plugin.isEnabled());
     }
