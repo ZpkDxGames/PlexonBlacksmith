@@ -393,7 +393,11 @@ public class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
         renderedTokens.remove(playerId);
         transientStatus.remove(playerId);
         submitting.remove(playerId);
-        if (returnHomeAfterClose.remove(playerId) && player.isOnline()) openHome(player);
+        if (returnHomeAfterClose.remove(playerId) && player.isOnline()) {
+            Bukkit.getScheduler().runTask(this, () -> {
+                if (player.isOnline()) openHome(player);
+            });
+        }
     }
 
     @Override
@@ -567,7 +571,10 @@ public class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
     }
 
     private OperationStatus rejectedRepairStatus(ItemStack item) {
-        if (item != null && item.getItemMeta() instanceof Damageable damageable && damageable.getDamage() <= 0) {
+        if (item != null
+                && item.getType().getMaxDurability() > 0
+                && item.getItemMeta() instanceof Damageable damageable
+                && damageable.getDamage() <= 0) {
             return blocked("ALREADY FULLY REPAIRED", "This item is already at full durability.", true);
         }
         return blocked("NOT REPAIRABLE", "This item cannot be repaired by the Blacksmith.", true);
