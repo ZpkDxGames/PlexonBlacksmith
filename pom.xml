@@ -1,123 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>dev.plexon</groupId>
-  <artifactId>PlexonBlacksmith</artifactId>
-  <version>1.4.1</version>
-  <name>PlexonBlacksmith</name>
-  <description>Direct cached-input repair and enchanting service for the Plexon plugin family.</description>
-  <url>https://github.com/ZpkDxGames/PlexonBlacksmith</url>
-
-  <developers>
-    <developer>
-      <id>ZpkDxGames</id>
-      <name>Tonim</name>
-      <url>https://github.com/ZpkDxGames</url>
-      <roles><role>Creator</role><role>Maintainer</role></roles>
-    </developer>
-  </developers>
-
-  <properties>
-    <maven.compiler.release>25</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.build.outputTimestamp>2026-09-09T00:00:00Z</project.build.outputTimestamp>
-    <paper.version>26.2.build.121-stable</paper.version>
-    <plexoncore.version>2.0.4</plexoncore.version>
-    <junit.version>6.0.3</junit.version>
-  </properties>
-
-  <repositories>
-    <repository>
-      <id>papermc</id>
-      <url>https://repo.papermc.io/repository/maven-public/</url>
-    </repository>
-  </repositories>
-
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion><groupId>dev.plexon</groupId><artifactId>PlexonBlacksmith</artifactId><version>2.0.0-rc.2</version><name>PlexonBlacksmith</name><description>Phase 2 exact-item repair, combine and enchanting workstation for the Plexon ecosystem.</description><url>https://github.com/ZpkDxGames/PlexonBlacksmith</url>
+  <developers><developer><id>ZpkDxGames</id><name>Tonim</name><url>https://github.com/ZpkDxGames</url><roles><role>Creator</role><role>Maintainer</role></roles></developer></developers>
+  <properties><maven.compiler.release>25</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding><project.build.outputTimestamp>2026-09-09T00:00:00Z</project.build.outputTimestamp><paper.version>26.2.build.111-stable</paper.version><plexoncore.version>2.0.4</plexoncore.version><junit.version>6.0.3</junit.version></properties>
+  <repositories><repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository></repositories>
   <dependencies>
-    <dependency>
-      <groupId>io.papermc.paper</groupId>
-      <artifactId>paper-api</artifactId>
-      <version>${paper.version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.zpkdxgames</groupId>
-      <artifactId>PlexonCore</artifactId>
-      <version>${plexoncore.version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.mockbukkit.mockbukkit</groupId>
-      <artifactId>mockbukkit-v26.2</artifactId>
-      <version>4.116.1</version>
-      <scope>test</scope>
-    </dependency>
+    <dependency><groupId>org.mockbukkit.mockbukkit</groupId><artifactId>mockbukkit-v26.2</artifactId><version>4.116.1</version><scope>test</scope></dependency>
+    <dependency><groupId>io.papermc.paper</groupId><artifactId>paper-api</artifactId><version>${paper.version}</version><scope>provided</scope></dependency>
+    <dependency><groupId>com.zpkdxgames</groupId><artifactId>PlexonCore</artifactId><version>${plexoncore.version}</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>${junit.version}</version><scope>test</scope></dependency>
   </dependencies>
-
-  <build>
-    <finalName>PlexonBlacksmith-${project.version}</finalName>
-    <resources>
-      <resource>
-        <directory>src/main/resources</directory>
-        <filtering>true</filtering>
-      </resource>
-    </resources>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-enforcer-plugin</artifactId>
-        <version>3.6.2</version>
-        <executions>
-          <execution>
-            <id>enforce-build</id>
-            <goals><goal>enforce</goal></goals>
-            <configuration>
-              <rules>
-                <requireJavaVersion><version>[25,26)</version></requireJavaVersion>
-                <requireMavenVersion><version>[3.9.0,)</version></requireMavenVersion>
-                <dependencyConvergence/>
-              </rules>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.14.1</version>
-        <configuration>
-          <release>25</release>
-          <parameters>true</parameters>
-          <encoding>UTF-8</encoding>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.4</version>
-        <configuration><useModulePath>false</useModulePath></configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <version>3.4.2</version>
-        <configuration>
-          <archive>
-            <manifestEntries>
-              <Implementation-Title>PlexonBlacksmith</Implementation-Title>
-              <Implementation-Version>${project.version}</Implementation-Version>
-              <Implementation-Vendor>ZpkDxGames</Implementation-Vendor>
-            </manifestEntries>
-          </archive>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
+  <build><finalName>PlexonBlacksmith-${project.version}</finalName><resources><resource><directory>src/main/resources</directory><filtering>true</filtering></resource></resources><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.6.2</version><executions><execution><id>enforce-build</id><goals><goal>enforce</goal></goals><configuration><rules><requireJavaVersion><version>[25,26)</version></requireJavaVersion><requireMavenVersion><version>[3.9.0,)</version></requireMavenVersion><dependencyConvergence/></rules></configuration></execution></executions></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version><configuration><release>25</release><parameters>true</parameters><encoding>UTF-8</encoding></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version><configuration><useModulePath>false</useModulePath></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version><configuration><archive><manifestEntries><Implementation-Title>PlexonBlacksmith</Implementation-Title><Implementation-Version>${project.version}</Implementation-Version><Implementation-Vendor>ZpkDxGames</Implementation-Vendor></manifestEntries></archive></configuration></plugin>
+  </plugins></build>
 </project>

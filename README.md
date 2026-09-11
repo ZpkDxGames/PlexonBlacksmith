@@ -1,54 +1,50 @@
-# PlexonBlacksmith 1.4.0
+# PlexonBlacksmith 2.0.0-rc.1
 
-PlexonBlacksmith provides a direct, plugin-owned `/blacksmith` inventory for repair and enchanting on Paper 26.2.
+PlexonBlacksmith is the Plexon ecosystem's exact-item Blacksmith workstation for Paper 26.2 / Java 25.
 
-## 1.4.0
+## Phase 2 workstation
 
-This release preserves the production 1.3.0 GUI and pricing behavior while adding:
+`/blacksmith` provides three plugin-owned pages:
 
-- optional PlexonCore 1.x module registration (`blacksmith`)
-- standalone compatibility when PlexonCore is absent
-- Bukkit `ServicesManager` public API
-- post-commit repair and enchant events
-- per-session transaction/reentrancy guards
-- Vault rollback/refund support for failures before output commit
-- explicit double-click collection protection
-- session nonce/IDs and safe disconnect/shutdown return handling
-- `/blacksmith diagnostics` and `/blacksmith reload`
-- Java 25 / Paper 26.2 Maven build and tag-driven release CI
+- **Repair** — restores durability while preserving the complete item identity and metadata.
+- **Combine** — combines remaining durability only when primary and donor are the same material and the same custom identity after damage normalization.
+- **Enchant** — applies compatible higher enchantment levels from an enchanted book to an exact clone of the target.
 
-## Player workflow
+Every page exposes real input/material slots, an exact result preview, deterministic cost, state-aware lore and stable Back / Guide / Next / Close controls.
 
-### Repair
+## Transaction contract
 
-Place one damaged item directly into **Repair Input**. The exact item stays visible, the repaired copy and exact Vault quote appear, and the item is repaired only when the result is clicked with an empty cursor.
+Paid operations run synchronously and follow:
 
-### Enchant
+`validate -> determine exact cost -> reserve/charge -> perform -> commit -> refund/rollback on failure`
 
-Place the target item and an enchanted book directly into the Enchant inputs. Compatible enchantment upgrades are previewed, the exact price is shown, and the book is consumed only after successful payment and output commit.
+Inputs are cleared only after the result has been placed successfully. Expensive/destructive actions use confirmation. Duplicate-click, shift-click, drag and cross-inventory collection paths are bounded and protected.
 
-Inputs remain cached while switching pages. Closing the GUI returns every unused cached input; full inventories fall back to dropping the item naturally at the player's location.
+## Custom item compatibility
 
-## Requirements
+Repair and Combine intentionally mutate only `Damageable.damage`. Enchant intentionally mutates only enchantment state. PDC, components, names, lore, attributes and other plugin metadata remain owned by the input item.
 
-- Paper 26.2
-- Java 25
-- Vault plus a Vault-compatible economy provider for paid transactions
-- PlexonCore 1.0.0+ API 1.x is optional
+Generic material upgrades are intentionally excluded from 2.0.0-rc.1 because there is no safe generic rule for transforming arbitrary custom-item components/PDC. Future upgrades require an explicit adapter/recipe contract.
+
+## Economy
+
+PlexonBlacksmith consumes the active Vault economy service. In the Plexon ecosystem, TheosisEconomy remains the provider authority through Vault; Blacksmith does not register or duplicate an economy provider.
 
 ## Commands
 
-- `/blacksmith` — open the forge
-- `/blacksmith diagnostics` — admin diagnostics
-- `/blacksmith reload` — safely close active sessions and refresh economy/Core health
+- `/blacksmith`
+- `/blacksmith diagnostics` — `plexon.blacksmith.admin`
+- `/blacksmith reload` — closes sessions safely, reloads configuration and re-resolves Vault.
 
-## Core modes
+## Configuration and API
 
-- Compatible PlexonCore present: `CORE`
-- PlexonCore absent/disabled/incompatible: `STANDALONE`
+See:
 
-Gameplay remains owned by PlexonBlacksmith in both modes.
+- `docs/CONFIGURATION_2_0.md`
+- `docs/API.md`
+- `docs/MIGRATION_2_0.md`
+- `docs/PHASE2_2_0_0_PREMIUM_REBUILD_SPEC.md`
 
-## Upgrade from 1.3.0
+## Certification boundary
 
-Stop the server, replace `PlexonBlacksmith-1.3.0.jar` with `PlexonBlacksmith-1.4.0.jar`, keep the existing plugin folder, then start the server. Do not restore any old GUIPlus Blacksmith menu/alias.
+`2.0.0-rc.1` is a release candidate. Source/CI completion does not certify live PlexonCraft runtime behavior. Stable `2.0.0` must not be published until the exact RC candidate is runtime-certified on PlexonCraft.
