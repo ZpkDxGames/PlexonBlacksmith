@@ -233,6 +233,7 @@ class PlexonBlacksmithPhase3UxTest {
         assertCursorEmpty();
 
         click(BACK_HOME);
+        server.getScheduler().performOneTick();
         assertTrue(api.activeSession(player.getUniqueId()).isEmpty());
         assertEquals(1, countIdentity("plexon-tools:return-me"));
         assertEquals("REPAIR", name(HOME_REPAIR));
