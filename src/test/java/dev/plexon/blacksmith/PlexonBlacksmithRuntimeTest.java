@@ -32,21 +32,22 @@ import org.mockbukkit.mockbukkit.ServerMock;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
 
 class PlexonBlacksmithRuntimeTest {
+    private static final int HOME_REPAIR = 20;
     private static final int REPAIR_INPUT = 20;
-    private static final int REPAIR_OUTPUT = 24;
     private static final int COMBINE_PRIMARY = 19;
     private static final int COMBINE_DONOR = 21;
-    private static final int COMBINE_OUTPUT = 25;
-    private static final int NEXT = 52;
+    private static final int MODE_REPAIR = 45;
+    private static final int MODE_COMBINE = 46;
+    private static final int PRIMARY_ACTION = 49;
 
     ServerMock server;
-    PlexonBlacksmithBridge plugin;
+    PlexonBlacksmithPhase3 plugin;
     PlayerMock player;
 
     @BeforeEach
     void start() {
         server = MockBukkit.mock();
-        plugin = MockBukkit.load(PlexonBlacksmithBridge.class);
+        plugin = MockBukkit.load(PlexonBlacksmithPhase3.class);
         player = server.addPlayer("Tonim");
         assertTrue(plugin.isEnabled());
     }
@@ -68,8 +69,8 @@ class PlexonBlacksmithRuntimeTest {
         assertNotNull(visible);
         assertEquals(100, ((Damageable) visible.getItemMeta()).getDamage());
 
-        call(NEXT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
-        call(46, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(MODE_COMBINE, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(MODE_REPAIR, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         ItemStack restoredView = player.getOpenInventory().getTopInventory().getItem(REPAIR_INPUT);
         assertEquals(Material.DIAMOND_PICKAXE, restoredView.getType());
 
@@ -113,7 +114,7 @@ class PlexonBlacksmithRuntimeTest {
         player.setItemOnCursor(customPickaxe(100, "plexon-tools:legendary"));
         call(REPAIR_INPUT, ClickType.LEFT, InventoryAction.PLACE_ALL);
         double before = economy.balance(player);
-        call(REPAIR_OUTPUT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(PRIMARY_ACTION, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         ItemStack output = player.getItemOnCursor();
         assertNotNull(output);
         assertEquals(0, ((Damageable) output.getItemMeta()).getDamage());
@@ -124,7 +125,7 @@ class PlexonBlacksmithRuntimeTest {
 
         double after = economy.balance(player);
         player.setItemOnCursor(null);
-        call(REPAIR_OUTPUT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(PRIMARY_ACTION, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         assertEquals(after, economy.balance(player), 0.001);
         assertEquals(1, economy.withdrawals);
         assertEquals(1, repairedEvents.get());
@@ -151,7 +152,7 @@ class PlexonBlacksmithRuntimeTest {
         }, plugin);
 
         open();
-        call(NEXT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(MODE_COMBINE, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         player.setItemOnCursor(customPickaxe(1200, "plexon-tools:legendary"));
         call(COMBINE_PRIMARY, ClickType.LEFT, InventoryAction.PLACE_ALL);
         player.setItemOnCursor(customPickaxe(1200, "plexon-tools:legendary"));
@@ -159,12 +160,12 @@ class PlexonBlacksmithRuntimeTest {
         assertCursorEmpty();
 
         double before = economy.balance(player);
-        call(COMBINE_OUTPUT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(PRIMARY_ACTION, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         assertEquals(0, economy.withdrawals, "First click must arm confirmation only");
         assertEquals(before, economy.balance(player), 0.001);
         assertCursorEmpty();
 
-        call(COMBINE_OUTPUT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(PRIMARY_ACTION, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         ItemStack output = player.getItemOnCursor();
         assertNotNull(output);
         assertEquals(Material.DIAMOND_PICKAXE, output.getType());
@@ -174,7 +175,7 @@ class PlexonBlacksmithRuntimeTest {
         assertEquals(1, combinedEvents.get());
 
         player.setItemOnCursor(null);
-        call(COMBINE_OUTPUT, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        call(PRIMARY_ACTION, ClickType.LEFT, InventoryAction.PICKUP_ALL);
         assertEquals(1, economy.withdrawals);
         assertEquals(1, combinedEvents.get());
     }
@@ -187,6 +188,10 @@ class PlexonBlacksmithRuntimeTest {
 
     private void open() {
         assertTrue(server.dispatchCommand(player, "blacksmith"));
+        assertEquals(54, player.getOpenInventory().getTopInventory().getSize());
+        call(HOME_REPAIR, ClickType.LEFT, InventoryAction.PICKUP_ALL);
+        assertTrue(server.getServicesManager().load(PlexonBlacksmithAPI.class)
+                .activeSession(player.getUniqueId()).isPresent());
         assertEquals(54, player.getOpenInventory().getTopInventory().getSize());
     }
 
