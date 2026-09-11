@@ -14,7 +14,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
  * YAML and may continue with defaults; Blacksmith must not evict item-custody sessions or change
  * prices/features unless the candidate file can first be parsed successfully.
  */
-public final class PlexonBlacksmithStable extends PlexonBlacksmithPhase3 {
+public class PlexonBlacksmithStable extends PlexonBlacksmithPhase3 {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
