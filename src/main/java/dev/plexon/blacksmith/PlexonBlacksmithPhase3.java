@@ -16,7 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
@@ -46,7 +45,7 @@ import org.bukkit.plugin.RegisteredServiceProvider;
  * Phase 3 player-product layer. The Phase 2 superclass remains the sole workstation transaction,
  * quote, item-custody and rollback authority. This class only owns routing and presentation.
  */
-public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
+public class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
     private enum TargetMode { REPAIR, COMBINE, ENCHANT }
 
     private record HomeView(Inventory inventory, boolean guide) {}
@@ -102,6 +101,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
     private final Map<UUID, Inventory> workstationViews = new HashMap<>();
     private final Map<UUID, PresentationToken> renderedTokens = new HashMap<>();
     private final Map<UUID, OperationStatus> transientStatus = new HashMap<>();
+    private final Map<UUID, ItemStack[]> guideSnapshots = new HashMap<>();
     private final Set<UUID> guideOverlay = new HashSet<>();
     private final Set<UUID> returnHomeAfterClose = new HashSet<>();
     private final Set<UUID> submitting = new HashSet<>();
@@ -127,6 +127,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
     private void openHome(Player player) {
         UUID playerId = player.getUniqueId();
         guideOverlay.remove(playerId);
+        guideSnapshots.remove(playerId);
         returnHomeAfterClose.remove(playerId);
         renderedTokens.remove(playerId);
         transientStatus.remove(playerId);
@@ -280,6 +281,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
             return;
         }
         if (raw == GUIDE) {
+            guideSnapshots.put(playerId, copyContents(workstation.getContents()));
             guideOverlay.add(playerId);
             renderGuideOverlay(player, workstation);
             return;
@@ -328,13 +330,17 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
     }
 
     private void handleGuideOverlayClick(Player player, int raw) {
+        UUID playerId = player.getUniqueId();
+        Inventory workstation = workstationViews.get(playerId);
         if (raw == BACK_HOME) {
-            guideOverlay.remove(player.getUniqueId());
+            guideOverlay.remove(playerId);
+            restoreGuideSnapshot(playerId, workstation);
             decorateWorkstation(player);
         } else if (raw == CLOSE) {
             player.closeInventory();
         } else if (raw == 19 || raw == 21 || raw == 23) {
-            guideOverlay.remove(player.getUniqueId());
+            guideOverlay.remove(playerId);
+            restoreGuideSnapshot(playerId, workstation);
             TargetMode target = raw == 19 ? TargetMode.REPAIR : raw == 21 ? TargetMode.COMBINE : TargetMode.ENCHANT;
             routeMode(player, target);
             decorateWorkstation(player);
@@ -383,6 +389,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
 
         workstationViews.remove(playerId);
         guideOverlay.remove(playerId);
+        guideSnapshots.remove(playerId);
         renderedTokens.remove(playerId);
         transientStatus.remove(playerId);
         submitting.remove(playerId);
@@ -396,6 +403,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
         homeViews.remove(playerId);
         workstationViews.remove(playerId);
         guideOverlay.remove(playerId);
+        guideSnapshots.remove(playerId);
         returnHomeAfterClose.remove(playerId);
         renderedTokens.remove(playerId);
         transientStatus.remove(playerId);
@@ -567,11 +575,11 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
 
     private OperationStatus pricedStatus(Player player, String readyTitle, String detail,
                                          double price, String provider, boolean featureEnabled) {
-        if (provider == null || provider.equalsIgnoreCase("unavailable")) {
-            return new OperationStatus("ECONOMY UNAVAILABLE", "Paid Blacksmith operations are unavailable right now.",
-                    price, BalanceSnapshot.unavailable(provider), false, featureEnabled);
-        }
         BalanceSnapshot balance = readBalance(player, provider);
+        if ((provider == null || provider.equalsIgnoreCase("unavailable")) && !balance.available()) {
+            return new OperationStatus("ECONOMY UNAVAILABLE", "Paid Blacksmith operations are unavailable right now.",
+                    price, balance, false, featureEnabled);
+        }
         if (balance.available() && balance.balance() + 1.0e-9 < price) {
             return new OperationStatus("INSUFFICIENT FUNDS",
                     "You need $" + money.format(price) + " to complete this operation.", price, balance, false, featureEnabled);
@@ -599,7 +607,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
             double balance = ((Number) getBalance.invoke(provider, player)).doubleValue();
             Object name = getName.invoke(provider);
             return new BalanceSnapshot(Double.isFinite(balance), balance,
-                    name == null ? providerName : String.valueOf(name));
+                    name == null ? (providerName == null ? "Vault" : providerName) : String.valueOf(name));
         } catch (Throwable ignored) {
             return BalanceSnapshot.unavailable(providerName);
         }
@@ -631,7 +639,7 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
         lore.add("<gray>" + safe(status.detail()) + "</gray>");
         if (status.price() > 0.0) lore.add("<gray>Quote</gray> <white>$" + money.format(status.price()) + "</white>");
         if (status.balance().available()) lore.add("<gray>Balance</gray> <white>$" + money.format(status.balance().balance()) + "</white>");
-        if (status.price() > 0.0 && !status.balance().provider().isBlank()) {
+        if (status.price() > 0.0 && status.balance().provider() != null && !status.balance().provider().isBlank()) {
             lore.add("<dark_gray>Economy: " + safe(status.balance().provider()) + " via Vault</dark_gray>");
         }
         Material icon = status.ready() ? Material.LIME_DYE
@@ -729,6 +737,17 @@ public final class PlexonBlacksmithPhase3 extends PlexonBlacksmithBridge {
             case COMBINE -> "<gray>Primary + matching donor → exact combined preview.</gray>";
             case ENCHANT -> "<gray>Target + enchanted book → compatible exact preview.</gray>";
         };
+    }
+
+    private ItemStack[] copyContents(ItemStack[] contents) {
+        ItemStack[] copy = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) copy[i] = contents[i] == null ? null : contents[i].clone();
+        return copy;
+    }
+
+    private void restoreGuideSnapshot(UUID playerId, Inventory inventory) {
+        ItemStack[] snapshot = guideSnapshots.remove(playerId);
+        if (inventory != null && snapshot != null) inventory.setContents(snapshot);
     }
 
     private void fillFrame(Inventory inventory) {
